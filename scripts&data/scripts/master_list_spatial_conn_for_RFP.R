@@ -73,7 +73,12 @@ library(utils)
   
   # Convert to sf object using WGS84 (EPSG:4326)
   
-  sites_sf <- st_as_sf(sites[!is.na(Longitude)], coords = c("Longitude", "Latitude"), crs = 4326)
+  sites_sf <- st_as_sf(sites[!is.na(Longitude)], coords = c("Longitude", "Latitude"), crs = 4326, remove=F)
+  
+  
+# 2025 Control Priority List
+  
+  priority25 <- fread(file = "scripts&data/data/input/Statewide_Contractor_Subset for DNR review.csv")
 
 # RPBB habitat shapefile
 
@@ -159,17 +164,50 @@ library(utils)
   joined_data_lk_rv[ , .N , .(Zone, `RPBB Priority Zone`) ]
   joined_data_lk_rv[ , 'RPBB Priority Zone']
 
+  ### ... not complete
+  
+  
+#'
+#' Join and subset for 2025 priority sites:
+  
+  joined_data_lk_rv[priority25, on = .(EDDMapS), RFP_PriorityInclude_2025 := is.na(EDDMapS)]
+  
+  #how many sites?
+  joined_data_lk_rv[ , .N , .(RFP_PriorityInclude_2025)]
+
+  
+  
+  clean_names
+  
+  
+  
+  
+#'  Assign priority values:
+#'  
+#'  
+  joined_data_lk_rv[ , .N , .(RFP_PriorityInclude_2025,`DNR Region`)][order(RFP_PriorityInclude_2025)]
+  
+  region_priority = data.table('DNR Region' = c(1, 2 , 3, 4), PriorityRank2025 = c(1,1,3,2))
+  
+  
+  joined_data_lk_rv[ region_priority, on = .(`DNR Region`) , PriorityRank2025 := PriorityRank2025]
+  
+  
+  
+  names(joined_data_lk_rv)
 
 
+#' Consolidated list for MDA Report
+  keepcols = c("EDDMapS", "County" )
+  MDA_list2025 <- joined_data_lk_rv[ !is.na(pw_basin_name) & !is.na(RFP_PriorityInclude_2025) ,.SD , .SDcols = c("EDDMapS", "County", "Location Name", "Location Comments", "Twp", "Latitude", "Longitude", "Habitat", "Orig Area
+  Sq Ft", "DNR Region", "PriorityRank2025") ]
 
 
-
-
-
-
-
-
-
+  MDA_list2025[County == "Chisago", PriorityRank2025 := 1  , ]
+  
+  fwrite(MDA_list2025, file = "scripts&data/data/output/MDAList_PubWaters_2025.csv")
+  
+  joined_data_lk_rv[EDDMapS == 7801980]
 
 
 
