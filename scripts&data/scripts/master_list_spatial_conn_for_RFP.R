@@ -41,25 +41,11 @@ library(gridExtra)
 library(tidyr)
 library(esri2sf)
 library(utils)
-
-# library(ggplot2)
-# library(stringr)
-# library(vegan)
-# library(dplyr)
-# library(janitor)
-# library(lme4)
-# library(sjPlot)
-# library(mediation)
-# library(ggpubr)
-# library(EnvStats)
-# library(lmerTest)
-# library(merTools)
-# library(rstanarm)
-# library(ggsn)
-# library(ggpmisc)
-# library(cowplot)
-# library(maps)
-# library(grid)
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(tigris)
+library(ggrepel)
 
 # load in functions -------------------------------------------------------
 #' ## Functions
@@ -127,6 +113,9 @@ library(utils)
   rivers <- st_read(gpkg_file, layer = "public_waters_watercourses_delineations")
 
 
+
+# joins across data layers ------------------------------------------------
+
   
   
 #' Do a join to these layers 
@@ -166,35 +155,107 @@ library(utils)
 
   ### ... not complete
   
-  
+
+# subset for 2025 priority ------------------------------------------------
+
+
 #'
 #' Join and subset for 2025 priority sites:
   
-  joined_data_lk_rv[priority25, on = .(EDDMapS), RFP_PriorityInclude_2025 := is.na(EDDMapS)]
+  joined_data_lk_rv[priority25, on = .(EDDMapS), RFP_PriorityInclude_2025 := !is.na(EDDMapS)]
   
   #how many sites?
   joined_data_lk_rv[ , .N , .(RFP_PriorityInclude_2025)]
 
   
   
-  clean_names
-  
-  
-  
-  
 #'  Assign priority values:
+#'  1. S. to N. 
+#'  
+#'  2. Outstate to metro
+#'  
+#'  3. flooded sites pushed later in year
+#'  
 #'  
 #'  
   joined_data_lk_rv[ , .N , .(RFP_PriorityInclude_2025,`DNR Region`)][order(RFP_PriorityInclude_2025)]
   
-  region_priority = data.table('DNR Region' = c(1, 2 , 3, 4), PriorityRank2025 = c(1,1,3,2))
-  
-  
+  region_priority = data.table('DNR Region' = c(1, 2 , 3, 4), PriorityRank2025 = c(2,2,3,1))
   joined_data_lk_rv[ region_priority, on = .(`DNR Region`) , PriorityRank2025 := PriorityRank2025]
   
   
+  #boost SE mn counties up to #1:
+  
+  joined_data_lk_rv[County %in% c("Goodhue", "Wabasha", "Olmsted", "Winona", "Fillmore", "Houston"), .N , County]
+  joined_data_lk_rv[County %in% c("Goodhue", "Wabasha", "Olmsted", "Winona", "Fillmore", "Houston"), PriorityRank2025 := 1]
+  
+  joined_data_lk_rv[ , .N , .(PriorityRank2025, County) ][order(PriorityRank2025)]
+  
+  #boost central MN counties to level 2 (from 3)
+  joined_data_lk_rv[County %in% c("Stearns", "Morrison", "Todd", "Mille lacs", "Sherburne", "Isanti"), .N , .(County, PriorityRank2025)]
+  joined_data_lk_rv[County %in% c("Stearns", "Morrison", "Todd", "Mille lacs", "Sherburne", "Isanti"), PriorityRank2025 := 2]
   
   names(joined_data_lk_rv)
+
+#' Additional priority ranking work: 
+
+  #committed/high need 2025:
+  joined_data_lk_rv[County == "Chisago" & !is.na(pw_basin_name), CommittedWork2025 := T  , ]
+  joined_data_lk_rv[str_detect(`Location Name`, "Swessinger") , CommittedWork2025 := T  ,]
+  joined_data_lk_rv[str_detect(`Location Name`, "Bass Ponds")   , CommittedWork2025 := T  ,] 
+  joined_data_lk_rv[EDDMapS == 10724895  ,  CommittedWork2025 := T  ,] 
+  joined_data_lk_rv[EDDMapS == 8700861   ,  CommittedWork2025 := T  ,] 
+  joined_data_lk_rv[str_detect(`Landowner Type`, "City Champlin")   , CommittedWork2025 := T  ,] 
+  joined_data_lk_rv[str_detect(`Landowner1`, "James Barton")   , CommittedWork2025 := T  ,] 
+  joined_data_lk_rv[str_detect(`Notes 2024`, "looded")   , CommittedWork2025 := T  ,]
+  
+  
+  #export a draft list for UMN
+  Draft_priority_list_29May2025 <- joined_data_lk_rv[ !is.na(RFP_PriorityInclude_2025) ,.SD , .SDcols = c("EDDMapS", "County", "Location Name", "Location Comments", "Twp", "Latitude", "Longitude", "Habitat", "Orig Area
+  Sq Ft", "DNR Region", "PriorityRank2025", "CommittedWork2025") ]
+
+    fwrite(Draft_priority_list_29May2025, file = "scripts&data/data/output/RFPList_PriorityandCommit_29May2025.csv")
+    
+  
+    joined_data_lk_rv <- st_as_sf(joined_data_lk_rv)
+
+# map it ------------------------------------------------------------------
+
+
+    ggplot() +
+      geom_sf(data = joined_data_lk_rv, aes(color = PriorityRank2025) , size = 2) +
+      labs(title = "Point Shapefile", x = "Longitude", y = "Latitude")
+    
+    # Get MN counties shapefile
+    mn_counties <- counties(state = "MN", cb = TRUE, class = "sf")
+    
+    # Create centroids for labeling
+    mn_counties_centroids <- st_centroid(mn_counties)
+    
+    # Build your plot
+    ggplot() +
+      # Add MN counties
+      geom_sf(data = mn_counties, fill = NA, color = "black", size = 0.5) +
+      
+      # Add county labels
+      geom_text_repel(data = mn_counties_centroids,
+                      aes(label = NAME, geometry = geometry),
+                      stat = "sf_coordinates",
+                      size = 2.5) +
+      
+      # Your layer of interest
+      geom_sf(data = joined_data_lk_rv, aes(color = PriorityRank2025), size = 2) +
+      
+      # Labels
+      labs(title = "Point Shapefile with MN Counties",
+           x = "Longitude",
+           y = "Latitude") +
+      
+      # Optional theme cleanup
+      theme_minimal()
+    
+  
+# MDA report export -------------------------------------------------------
 
 
 #' Consolidated list for MDA Report
@@ -205,12 +266,11 @@ library(utils)
 
   MDA_list2025[County == "Chisago", PriorityRank2025 := 1  , ]
   
-  fwrite(MDA_list2025, file = "scripts&data/data/output/MDAList_PubWaters_2025.csv")
+  # fwrite(MDA_list2025, file = "scripts&data/data/output/MDAList_PubWaters_2025.csv")
   
   joined_data_lk_rv[EDDMapS == 7801980]
 
-
-
+  
 
 
 
