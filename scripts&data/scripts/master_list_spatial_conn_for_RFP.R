@@ -152,13 +152,16 @@ library(ggrepel)
 #' Fix RPBB zone  
   joined_data_lk_rv[ , .N , .(Zone, `RPBB Priority Zone`) ]
   joined_data_lk_rv[ , 'RPBB Priority Zone']
-
-  ### ... not complete
   
+  joined_data_lk_rv[ , `RPBB Priority Zone` := Zone , ]
 
+  joined_data_lk_rv[, Zone := NULL]
+
+  # final RPBB zone assignemnts
+  joined_data_lk_rv[ , .N , .(`RPBB Priority Zone`) ]
+  
+  
 # subset for 2025 priority ------------------------------------------------
-
-
 #'
 #' Join and subset for 2025 priority sites:
   
@@ -178,6 +181,12 @@ library(ggrepel)
 #'  
 #'  
 #'  
+  #fix to records with bad DNR region
+  joined_data_lk_rv[EDDMapS == 12334450, `DNR Region` := 4]
+  joined_data_lk_rv[EDDMapS == 12051822, `DNR Region` := 3]
+  joined_data_lk_rv[is.na(`DNR Region`) & County == "Sherburne", `DNR Region` := 3]
+  
+  
   joined_data_lk_rv[ , .N , .(RFP_PriorityInclude_2025,`DNR Region`)][order(RFP_PriorityInclude_2025)]
   
   region_priority = data.table('DNR Region' = c(1, 2 , 3, 4), PriorityRank2025 = c(2,2,3,1))
@@ -186,8 +195,8 @@ library(ggrepel)
   
   #boost SE mn counties up to #1:
   
-  joined_data_lk_rv[County %in% c("Goodhue", "Wabasha", "Olmsted", "Winona", "Fillmore", "Houston"), .N , County]
-  joined_data_lk_rv[County %in% c("Goodhue", "Wabasha", "Olmsted", "Winona", "Fillmore", "Houston"), PriorityRank2025 := 1]
+  joined_data_lk_rv[County %in% c("Goodhue", "Wabasha", "Olmsted", "Winona", "Fillmore", "Houston", "Dodge"), .N , County]
+  joined_data_lk_rv[County %in% c("Goodhue", "Wabasha", "Olmsted", "Winona", "Fillmore", "Houston", "Dodge"), PriorityRank2025 := 1]
   
   joined_data_lk_rv[ , .N , .(PriorityRank2025, County) ][order(PriorityRank2025)]
   
@@ -197,8 +206,10 @@ library(ggrepel)
   
   names(joined_data_lk_rv)
 
-#' Additional priority ranking work: 
 
+  
+# commited work labeling -------------------------------------------------
+#' Commited work
   #committed/high need 2025:
   joined_data_lk_rv[County == "Chisago" & !is.na(pw_basin_name), CommittedWork2025 := T  , ]
   joined_data_lk_rv[str_detect(`Location Name`, "Swessinger") , CommittedWork2025 := T  ,]
@@ -208,22 +219,26 @@ library(ggrepel)
   joined_data_lk_rv[str_detect(`Landowner Type`, "City Champlin")   , CommittedWork2025 := T  ,] 
   joined_data_lk_rv[str_detect(`Landowner1`, "James Barton")   , CommittedWork2025 := T  ,] 
   joined_data_lk_rv[str_detect(`Notes 2024`, "looded")   , CommittedWork2025 := T  ,]
+  joined_data_lk_rv[is.na(CommittedWork2025), CommittedWork2025 := F]
+  joined_data_lk_rv[ , .N , CommittedWork2025]
   
+  joined_data_lk_rv[ , .N , PriorityRank2025 ]
+  joined_data_lk_rv[RFP_PriorityInclude_2025 == T, .N, PriorityRank2025]
   
   #export a draft list for UMN
-  Draft_priority_list_29May2025 <- joined_data_lk_rv[ !is.na(RFP_PriorityInclude_2025) ,.SD , .SDcols = c("EDDMapS", "County", "Location Name", "Location Comments", "Twp", "Latitude", "Longitude", "Habitat", "Orig Area
-  Sq Ft", "DNR Region", "PriorityRank2025", "CommittedWork2025") ]
-
-    fwrite(Draft_priority_list_29May2025, file = "scripts&data/data/output/RFPList_PriorityandCommit_29May2025.csv")
-    
+  # Draft_priority_list_29May2025 <- joined_data_lk_rv[ !is.na(RFP_PriorityInclude_2025) ,.SD , .SDcols = c("EDDMapS", "County", "Location Name", "Location Comments", "Twp", "Latitude", "Longitude", "Habitat", "Orig Area
+  # Sq Ft", "DNR Region", "PriorityRank2025", "CommittedWork2025") ]
+  # 
+  #   fwrite(Draft_priority_list_29May2025, file = "scripts&data/data/output/RFPList_PriorityandCommit_29May2025.csv")
+  #   
   
-    joined_data_lk_rv <- st_as_sf(joined_data_lk_rv)
+    joined_data_lk_rvSF <- st_as_sf(joined_data_lk_rv)
 
 # map it ------------------------------------------------------------------
 
 
     ggplot() +
-      geom_sf(data = joined_data_lk_rv, aes(color = PriorityRank2025) , size = 2) +
+      geom_sf(data = joined_data_lk_rvSF, aes(color = PriorityRank2025, shape = CommittedWork2025) , size = 2) +
       labs(title = "Point Shapefile", x = "Longitude", y = "Latitude")
     
     # Get MN counties shapefile
@@ -244,7 +259,7 @@ library(ggrepel)
                       size = 2.5) +
       
       # Your layer of interest
-      geom_sf(data = joined_data_lk_rv, aes(color = PriorityRank2025), size = 2) +
+      geom_sf(data = joined_data_lk_rvSF, aes(color = PriorityRank2025, shape = CommittedWork2025), size = 2) +
       
       # Labels
       labs(title = "Point Shapefile with MN Counties",
@@ -263,21 +278,230 @@ library(ggrepel)
   MDA_list2025 <- joined_data_lk_rv[ !is.na(pw_basin_name) & !is.na(RFP_PriorityInclude_2025) ,.SD , .SDcols = c("EDDMapS", "County", "Location Name", "Location Comments", "Twp", "Latitude", "Longitude", "Habitat", "Orig Area
   Sq Ft", "DNR Region", "PriorityRank2025") ]
 
-
-  MDA_list2025[County == "Chisago", PriorityRank2025 := 1  , ]
+  # nix this
+  # MDA_list2025[County == "Chisago", PriorityRank2025 := 1  , ]
   
   # fwrite(MDA_list2025, file = "scripts&data/data/output/MDAList_PubWaters_2025.csv")
   
-  joined_data_lk_rv[EDDMapS == 7801980]
 
+
+# choose best current acreages -------------------------------------------------------
+
+  names(joined_data_lk_rv)[22] <- "Orig Area Acres"
+  names(joined_data_lk_rv)[21] <- "Orig Area Sq Ft"
+  
+  joined_data_lk_rv[ RFP_PriorityInclude_2025 == T, .N ,
+                     .(is.na(`2024 Area (ac)`),
+                       is.na(`Orig Area Acres`),
+                       is.na(`Orig Area Sq Ft`)) ]
+  
+  #backfill Orig area acres where we have sqft
+  joined_data_lk_rv[ is.na(`Orig Area Acres`), 
+                           `Orig Area Acres` := `Orig Area Sq Ft`/ 43560 ]
+  
+  joined_data_lk_rv[  , RFP_acres := `2024 Area (ac)`  ]
+  joined_data_lk_rv[ is.na(RFP_acres) , RFP_acres := `Orig Area Acres`  ]
+  
+
+# designate backpack ------------------------------------------------------
+
+  joined_data_lk_rv[ , .N , `RPBB Priority Zone` ]
+    joined_data_lk_rv[`RPBB Priority Zone` == "High Potential Zone", RFP_backpack_glyphosate := T]
+  
+  joined_data_lk_rv[ ,  unique(`Location Comments`), ]
+    joined_data_lk_rv[str_detect(`Location Comments`, "GLYPHOSATE"), RFP_backpack_glyphosate := T]
+  
+  joined_data_lk_rv[ ,  unique(`**Access Notes**`), ]
+    joined_data_lk_rv[str_detect(`**Access Notes**`, "GLYPHOSATE", ), RFP_backpack_glyphosate := T]
+    joined_data_lk_rv[str_detect(`**Access Notes**`, "glyphosate", ), RFP_backpack_glyphosate := T]
+    
+    
+  joined_data_lk_rv[ , .N , .(RFP_backpack_glyphosate, County) ][order(County)]  
   
 
 
+# assign bidgroups --------------------------------------------------------
+
+  #group by the following bid groups: for non-lake groups, exclude lakes. 
+  # For each group, parse the count of backpack sites in each county
+  # Use only 2025 Priority ("RFP_PriorityInclude_2025")
+  names(joined_data_lk_rv)
+  
+  all_mn_counties <-  c(
+    "Aitkin", "Anoka", "Becker", "Beltrami", "Benton", "Big Stone", "Blue Earth", "Brown",
+    "Carlton", "Carver", "Cass", "Chippewa", "Chisago", "Clay", "Clearwater", "Cook",
+    "Cottonwood", "Crow Wing", "Dakota", "Dodge", "Douglas", "Faribault", "Fillmore",
+    "Freeborn", "Goodhue", "Grant", "Hennepin", "Houston", "Hubbard", "Isanti", "Itasca",
+    "Jackson", "Kanabec", "Kandiyohi", "Kittson", "Koochiching", "Lac Qui Parle", "Lake",
+    "Lake of the Woods", "Le Sueur", "Lincoln", "Lyon", "McLeod", "Mahnomen", "Marshall",
+    "Martin", "Meeker", "Mille Lacs", "Morrison", "Mower", "Murray", "Nicollet", "Nobles",
+    "Norman", "Olmsted", "Otter Tail", "Pennington", "Pine", "Pipestone", "Polk",
+    "Pope", "Ramsey", "Red Lake", "Redwood", "Renville", "Rice", "Rock", "Roseau",
+    "St. Louis", "Scott", "Sherburne", "Sibley", "Stearns", "Steele", "Stevens",
+    "Swift", "Todd", "Traverse", "Wabasha", "Wadena", "Waseca", "Washington", "Watonwan",
+    "Wilkin", "Winona", "Wright", "Yellow Medicine")
+  
+  
+  #southwest: 
+  southwest <- c("Cottonwood", "Jackson", "Kandiyohi", "Lac Qui Parle", "Lyon",
+                 "McLeod", "Meeker", "Murray", "Nobles", "Redwood", "Stearns", "Martin", "Lincoln" )
+  #southeast: 
+  southeast <- c("Blue Earth", "Dodge", "Fillmore", "Freeborn", "Goodhue",
+                 "Le Sueur", "Mower", "Nicollet", "Olmsted", "Rice",
+                 "Steele", "Wabasha", "Waseca", "Winona", "Sibley")
+  #MetroN
+  metro_n <- c("Chisago", "Isanti", "Sherburne", "Wright", "Anoka")
+  
+  #MetroS
+  metro_s <- c("Dakota", "Hennepin", "Ramsey", "Scott", "Washington", "Carver")
+  
+  #North
+  north <- c("Aitkin", "Becker", "Carlton", "Douglas", "Grant",
+             "Morrison", "Otter Tail", "Polk", "Todd", "Clay", "Pine",
+             "Mahnomen", "St. Louis", "Cass", "Wilkin", "Norman", "Stevens", "LakeoftheWoods" )
+  
+  #which counties are in the data:
+  dataco <- unique(joined_data_lk_rv$County)
+  #are any infested counties missing from our lists of regions?
+  any(!c(southwest, southeast, metro_s, metro_n, north) %in% dataco)
+  
+  rm(dataco, all_mn_counties)
+
+  joined_data_lk_rv %>% 
+    mutate(RFP_bidgroup = case_when( County %in% southeast & is.na(dowlknum) ~ "B: Southeast",
+                                     County %in% southwest & is.na(dowlknum) ~ "A: Southwest",
+                                     County %in% metro_n   & is.na(dowlknum) ~ "C: Metro North",
+                                     County %in% metro_s   & is.na(dowlknum) ~ "D: Metro South",
+                                     County %in% north     & is.na(dowlknum)~ "E: North",
+                                     !is.na(dowlknum) ~ "F: Lakes")) %>% 
+    {joined_data_lk_rv <<- .}
+  
+    joined_data_lk_rv[ RFP_PriorityInclude_2025 == T ,.N , RFP_bidgroup ]
+    
+    
+# Site listing ------------------------------------------------------------
+
+#' Consolidated list for RFP site list
+names(joined_data_lk_rv)
+keepcols = c("RFP_bidgroup","EDDMapS", "County", "Twp", "pw_basin_name", "dowlknum", "Latitude", "Longitude", "RFP_backpack_glyphosate", "RFP_acres", "PriorityRank2025" )
+RFPsitelist2025 <- joined_data_lk_rv[ RFP_PriorityInclude_2025 == T ,.SD , .SDcols = keepcols ]
+
+RFPsitelist2025[ , .N , EDDMapS ][N>1]
+
+# 2025.all.sites.pdf
 
 
+# fwrite(RFPsitelist2025, file = "scripts&data/data/output/2025.all.sites.csv")
 
 
+# RFP groupings summary generation ----------------------------------------
 
+# #here are the counties no listed in the 2024 call: 
+#   missing_counties <- c(
+#     "Anoka", "Beltrami", "Benton", "Big Stone", "Brown", "Carver", "Cass", "Chippewa",
+#     "Clay", "Clearwater", "Cook", "Crow Wing", "Faribault", "Houston", "Hubbard", "Itasca",
+#     "Kanabec", "Kittson", "Koochiching", "Lake", "Lake of the Woods", "Lincoln", "Mahnomen",
+#     "Marshall", "Martin", "Mille Lacs", "Norman", "Pennington", "Pine", "Pipestone", "Pope",
+#     "Red Lake", "Renville", "Rock", "Roseau", "Sibley", "St. Louis", "Stevens", "Swift",
+#     "Traverse", "Wadena", "Watonwan", "Wilkin", "Yellow Medicine"
+#   )
+#   
+#   joined_data_lk_rv[RFP_PriorityInclude_2025 == T &  County %in% missing_counties, .N , County]
+#   
+#   
+  
+
+#SW  
+  #count of sites
+  joined_data_lk_rv[RFP_PriorityInclude_2025 == T & #in 2025 Priority list
+                      is.na(pw_basin_name) & #not a lake site
+                      County %in% southwest, #in group
+                    .N
+                      ]
+  #acreage sums by county and RFP group
+  sw <- joined_data_lk_rv[RFP_PriorityInclude_2025 == T & #in 2025 Priority list
+                      is.na(pw_basin_name) & #not a lake site
+                      County %in% southwest, #in group
+                    .("CountofEDDMapS" = .N, "TotalAcres" = sum(RFP_acres), "Bidgroup" = "A: Southwest"),
+                    .(County,RFP_backpack_glyphosate)
+  ][order(County)]
+  
+#SE  
+  #count of sites
+  joined_data_lk_rv[RFP_PriorityInclude_2025 == T & #in 2025 Priority list
+                      is.na(pw_basin_name) & #not a lake site
+                      County %in% southeast, #in group
+                    .N
+  ]
+  #acreage sums by county and RFP group
+  se <- joined_data_lk_rv[RFP_PriorityInclude_2025 == T & #in 2025 Priority list
+                      is.na(pw_basin_name) & #not a lake site
+                      County %in% southeast, #in group
+                    .("CountofEDDMapS" = .N, "TotalAcres" = sum(RFP_acres), "Bidgroup" = "B: Southeast"),
+                    .(County,RFP_backpack_glyphosate)
+  ][order(County)]
+  
+#North
+  #count of sites
+  joined_data_lk_rv[RFP_PriorityInclude_2025 == T & #in 2025 Priority list
+                      is.na(pw_basin_name) & #not a lake site
+                      County %in% north, #in group
+                    .N
+  ]
+  #acreage sums by county and RFP group
+  no <- joined_data_lk_rv[RFP_PriorityInclude_2025 == T & #in 2025 Priority list
+                      is.na(pw_basin_name) & #not a lake site
+                      County %in% north, #in group
+                    .("CountofEDDMapS" = .N, "TotalAcres" = sum(RFP_acres), "Bidgroup" = "E: North"),
+                    .(County,RFP_backpack_glyphosate)
+  ][order(County)]
+  
+#Metro North
+  #count of sites
+  joined_data_lk_rv[RFP_PriorityInclude_2025 == T & #in 2025 Priority list
+                      is.na(pw_basin_name) & #not a lake site
+                      County %in% metro_n, #in group
+                    .N
+  ]
+  #acreage sums by county and RFP group
+  mn <- joined_data_lk_rv[RFP_PriorityInclude_2025 == T & #in 2025 Priority list
+                      is.na(pw_basin_name) & #not a lake site
+                      County %in% metro_n, #in group
+                    .("CountofEDDMapS" = .N, "TotalAcres" = sum(RFP_acres), "Bidgroup" = "C: Metro North"),
+                    .(County,RFP_backpack_glyphosate)
+  ][order(County)] 
+  
+#Metro South
+  #count of sites
+  joined_data_lk_rv[RFP_PriorityInclude_2025 == T & #in 2025 Priority list
+                      is.na(pw_basin_name) & #not a lake site
+                      County %in% metro_s, #in group
+                    .N
+  ]
+  #acreage sums by county and RFP group
+  ms <- joined_data_lk_rv[RFP_PriorityInclude_2025 == T & #in 2025 Priority list
+                      is.na(pw_basin_name) & #not a lake site
+                      County %in% metro_s, #in group
+                    .("CountofEDDMapS" = .N, "TotalAcres" = sum(RFP_acres), "Bidgroup" = "D: Metro South"),
+                    .(County,RFP_backpack_glyphosate)
+  ][order(County)]   
+  
+  #Lakes
+  lk <- joined_data_lk_rv[RFP_PriorityInclude_2025 == T & 
+                      !is.na(pw_basin_name) ,
+                    .("CountofEDDMapS" = .N, "TotalAcres" = sum(RFP_acres), "Bidgroup" = "F: Lakes"), 
+                    .(County, pw_basin_name, dowlknum, RFP_backpack_glyphosate)
+  ][order(dowlknum)]
+  
+
+
+RFPlist <- rbindlist(list(sw, se, no, ms, mn, lk), use.names = T, fill = T) 
+rm(sw, se, no, ms, mn, lk)
+  
+joined_data_lk_rv[RFPlist, on = .(County = County), RFP_bidgroup := Bidgroup ]
+
+
+# fwrite(RFPlist, file = "scripts&data/data/output/RFP_SummaryList_2025_b.csv")
 
 
 
